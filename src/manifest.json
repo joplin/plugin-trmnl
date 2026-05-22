@@ -1,0 +1,16 @@
+{
+	"manifest_version": 1,
+	"id": "org.joplinapp.plugins.TrmnlPlugin",
+	"app_min_version": "3.5",
+	"version": "1.0.0",
+	"name": "TRMNL",
+	"description": "Push Joplin search results to a TRMNL private plugin webhook",
+	"author": "Laurent Cozic",
+	"homepage_url": "https://github.com/laurent22/joplin-plugin-trmnl",
+	"repository_url": "https://github.com/laurent22/joplin-plugin-trmnl",
+	"keywords": ["trmnl", "e-ink", "dashboard", "search"],
+	"categories": ["integrations"],
+	"screenshots": [],
+	"icons": {},
+	"promo_tile": {}
+}
