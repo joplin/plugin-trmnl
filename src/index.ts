@@ -341,7 +341,7 @@ joplin.plugins.register({
 	onStart: async function() {
 		// Register settings section
 		await joplin.settings.registerSection(SETTING_SECTION, {
-			label: 'TRMNL',
+			label: 'TRMNL Push',
 			iconName: 'fas fa-tv',
 		});
 

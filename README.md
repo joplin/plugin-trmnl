@@ -1,4 +1,4 @@
-# Joplin TRMNL Plugin
+# Joplin TRMNL Push
 
 Push Joplin search results to a [TRMNL](https://usetrmnl.com/) private plugin webhook.
 
@@ -36,7 +36,7 @@ See the [TRMNL Private Plugins documentation](https://docs.usetrmnl.com/go/priva
 
 ## Configuration
 
-Go to **Settings** > **TRMNL** and configure:
+Go to **Settings** > **TRMNL Push** and configure:
 
 | Setting | Description |
 |---------|-------------|
