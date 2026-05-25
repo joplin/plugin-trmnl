@@ -14,10 +14,9 @@ Push Joplin search results to a [TRMNL](https://usetrmnl.com/) private plugin we
 
 ## Installation
 
-1. Download the latest `.jpl` file from the releases
-2. In Joplin, go to **Settings** > **Plugins**
-3. Click the gear icon and select **Install from file**
-4. Select the downloaded `.jpl` file
+1. Search for "TRMNL Push" from Joplin
+2. Install it
+3. Follow the instruction below for setup
 
 ## TRMNL Setup
 
