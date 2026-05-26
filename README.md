@@ -2,6 +2,33 @@
 
 Push Joplin search results to a [TRMNL](https://usetrmnl.com/) private plugin webhook.
 
+A note such as this one:
+
+```markdown
+## Today
+
+- [ ] Morning workout
+- [ ] Finish quarterly report
+- [ ] Call insurance provider
+- [x] Book dentist appointment
+- [ ] Buy groceries
+
+## Meals
+
+- Lunch: Chicken salad
+- Dinner: Pasta with vegetables
+
+## Reminders
+
+- Bin collection tomorrow
+- Mum's birthday on Friday
+- Electricity bill due in 3 days
+```
+
+would render like so in the TRMNL device:
+
+<img src="doc/images/main.jpg" width="50%" alt="Sample TRMNL screen showing the note rendered with checkboxes and bulleted lists">
+
 ## Features
 
 - Configure a Joplin search query to find matching notes
@@ -100,37 +127,65 @@ A few things to keep in mind:
 
 - **Keep matched notes short.** Long notes are clipped to fit TRMNL's payload limit, ending with `…`.
 - **Joplin attachment images won't display.** Use external HTTPS image URLs (`![alt](https://...)`) for any images you want on the device.
+- **Raw HTML in your notes is rendered as-is.** If you want fine-grained control over the layout of a specific note (custom spans, divs, inline styles), just write the HTML directly in the note.
 
 The following template handles both display modes. Paste it into the **Markup** field of your Private Plugin's **Full** view:
 
 ```html
 <style>
-	.note-body p { margin: 0 0 10px; }
-	.note-body ul, .note-body ol { margin: 0 0 10px; padding-left: 24px; }
-	.note-body ul { list-style: none; padding-left: 4px; }
-	.note-body li { margin: 2px 0; }
-	.note-body h1, .note-body h2, .note-body h3 { margin: 10px 0 6px; }
+	.j-layout {
+		padding: 16px;
+		box-sizing: border-box;
+		height: 100%;
+		font-family: sans-serif;
+		font-size: 20px;
+	}
+	.j-title { font-size: 1.4em; font-weight: bold; }
+	.j-meta { font-size: 0.7em; opacity: 0.7; margin-top: 2px; }
+	.j-list { margin-top: 0.6em; }
+	.j-list-item { padding: 0.3em 0; border-bottom: 1px solid #000; }
+	.j-list-item-title { font-weight: bold; }
+	.j-list-item-meta { float: right; opacity: 0.7; }
+	.j-footer {
+		position: absolute;
+		bottom: 0.4em;
+		left: 0;
+		right: 0;
+		text-align: center;
+		font-size: 0.7em;
+		opacity: 0.6;
+	}
+	.j-body {
+		margin-top: 0.6em;
+		line-height: 1.35;
+		h1 { font-size: 1.4em; margin: 0.3em 0; }
+		h2 { font-size: 1.2em; margin: 0.3em 0; }
+		h3 { font-size: 1.05em; margin: 0.3em 0; }
+		h4, h5, h6 { font-size: 1em; margin: 0.3em 0; font-weight: bold; }
+		ul, ol { padding-left: 0; list-style: none; }
+		ul, ol { li::before { content: "• "; } }
+		ul.cb-list { li::before { content: none; } }
+		img { max-width: 100%; height: auto; }
+	}
 </style>
 
 <div class="view view--full">
-	<div style="padding: 16px; box-sizing: border-box; height: 100%; display: block;">
+	<div class="j-layout">
 		{% if mode == "single" and note %}
-			<div style="font-size: 26px; font-weight: bold;">{{ note.title }}</div>
+			<div class="j-title">{{ note.title }}</div>
 			{% if note.updated %}
-				<div style="font-size: 14px; opacity: 0.7; margin-top: 2px;">{{ note.updated }}</div>
+				<div class="j-meta">{{ note.updated }}</div>
 			{% endif %}
-			<div class="note-body" style="margin-top: 12px; line-height: 1.35; font-size: 20px;">
-				{{ note.body_html }}
-			</div>
+			<div class="j-body">{{ note.body_html }}</div>
 		{% else %}
-			<div style="font-size: 26px; font-weight: bold;">{{ title }}</div>
-			<div style="font-size: 14px; opacity: 0.7;">{{ query }} • {{ count }} notes</div>
-			<div style="margin-top: 12px;">
+			<div class="j-title">{{ title }}</div>
+			<div class="j-meta">{{ query }} • {{ count }} notes</div>
+			<div class="j-list">
 				{% for item in items %}
-					<div style="padding: 6px 0; border-bottom: 1px solid #000;">
-						<span style="font-weight: bold;">{{ item.title }}</span>
+					<div class="j-list-item">
+						<span class="j-list-item-title">{{ item.title }}</span>
 						{% if item.updated %}
-							<span style="float: right; opacity: 0.7;">{{ item.updated }}</span>
+							<span class="j-list-item-meta">{{ item.updated }}</span>
 						{% endif %}
 					</div>
 				{% endfor %}
@@ -138,16 +193,15 @@ The following template handles both display modes. Paste it into the **Markup** 
 		{% endif %}
 	</div>
 
-	<div style="position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 14px; opacity: 0.6;">
-		Updated {{ pushed_at }}
-	</div>
+	<div class="j-footer">Updated {{ pushed_at }}</div>
 </div>
 ```
 
 Tips for adjusting the template:
 
-- Edit the `<style>` block to change spacing and font sizes for paragraphs, lists, and headings inside the note body.
-- Keep font sizes generous (18–22px for body text) for readable e-ink rendering.
+- Headings, paragraphs, lists, blockquotes, code blocks, and other Markdown elements are styled by TRMNL's built-in framework CSS — no extra rules needed for those.
+- The minimal `<style>` block at the top handles two things the framework doesn't: hiding bullets on checkbox lists, and constraining image width.
+- If you want to override spacing or font sizes, add rules to that `<style>` block targeting `.note-body p`, `.note-body h2`, etc.
 - Checkboxes in your notes appear as `☐` (unchecked) and `☑` (checked) inline in list items.
 
 ### Compact layouts (half / quadrant)
@@ -158,24 +212,43 @@ TRMNL devices can mix multiple plugins on one screen, which uses smaller layouts
 
 ```html
 <style>
-	.note-body p { margin: 0 0 6px; }
-	.note-body ul, .note-body ol { margin: 0 0 6px; padding-left: 20px; }
-	.note-body ul { list-style: none; padding-left: 4px; }
-	.note-body li { margin: 1px 0; }
+	.j-layout {
+		padding: 12px;
+		box-sizing: border-box;
+		height: 100%;
+		font-family: sans-serif;
+		font-size: 16px;
+	}
+	.j-title { font-size: 1.4em; font-weight: bold; }
+	.j-title-count { font-weight: normal; opacity: 0.7; }
+	.j-list { margin-top: 0.4em; }
+	.j-list-item { padding: 0.2em 0; font-size: 1.1em; }
+	.j-body {
+		margin-top: 0.4em;
+		line-height: 1.3;
+		max-height: 180px;
+		overflow: hidden;
+		h1 { font-size: 1.4em; margin: 0.25em 0; }
+		h2 { font-size: 1.2em; margin: 0.25em 0; }
+		h3 { font-size: 1.05em; margin: 0.25em 0; }
+		h4, h5, h6 { font-size: 1em; margin: 0.25em 0; font-weight: bold; }
+		ul, ol { padding-left: 0; list-style: none; }
+		ul, ol { li::before { content: "• "; } }
+		ul.cb-list { li::before { content: none; } }
+		img { max-width: 100%; height: auto; }
+	}
 </style>
 
 <div class="view view--half_horizontal">
-	<div style="padding: 12px; box-sizing: border-box; height: 100%; display: block;">
+	<div class="j-layout">
 		{% if mode == "single" and note %}
-			<div style="font-size: 24px; font-weight: bold;">{{ note.title }}</div>
-			<div class="note-body" style="margin-top: 6px; font-size: 16px; line-height: 1.3; max-height: 180px; overflow: hidden;">
-				{{ note.body_html }}
-			</div>
+			<div class="j-title">{{ note.title }}</div>
+			<div class="j-body">{{ note.body_html }}</div>
 		{% else %}
-			<div style="font-size: 24px; font-weight: bold;">{{ title }} <span style="font-weight: normal; opacity: 0.7;">• {{ count }}</span></div>
-			<div style="margin-top: 6px;">
+			<div class="j-title">{{ title }} <span class="j-title-count">• {{ count }}</span></div>
+			<div class="j-list">
 				{% for item in items limit: 4 %}
-					<div style="padding: 3px 0; font-size: 18px;">• {{ item.title }}</div>
+					<div class="j-list-item">• {{ item.title }}</div>
 				{% endfor %}
 			</div>
 		{% endif %}
@@ -187,31 +260,47 @@ TRMNL devices can mix multiple plugins on one screen, which uses smaller layouts
 
 ```html
 <style>
-	.note-body p { margin: 0 0 8px; }
-	.note-body ul, .note-body ol { margin: 0 0 8px; padding-left: 20px; }
-	.note-body ul { list-style: none; padding-left: 4px; }
-	.note-body li { margin: 2px 0; }
-	.note-body h1, .note-body h2, .note-body h3 { margin: 8px 0 4px; }
+	.j-layout {
+		padding: 12px;
+		box-sizing: border-box;
+		height: 100%;
+		font-family: sans-serif;
+		font-size: 16px;
+	}
+	.j-title { font-size: 1.4em; font-weight: bold; }
+	.j-meta { font-size: 0.8em; opacity: 0.7; margin-top: 0.15em; }
+	.j-list { margin-top: 0.6em; }
+	.j-list-item { padding: 0.25em 0; border-bottom: 1px solid #000; }
+	.j-body {
+		margin-top: 0.6em;
+		line-height: 1.35;
+		max-height: 400px;
+		overflow: hidden;
+		h1 { font-size: 1.4em; margin: 0.3em 0; }
+		h2 { font-size: 1.2em; margin: 0.3em 0; }
+		h3 { font-size: 1.05em; margin: 0.3em 0; }
+		h4, h5, h6 { font-size: 1em; margin: 0.3em 0; font-weight: bold; }
+		ul, ol { padding-left: 0; list-style: none; }
+		ul, ol { li::before { content: "• "; } }
+		ul.cb-list { li::before { content: none; } }
+		img { max-width: 100%; height: auto; }
+	}
 </style>
 
 <div class="view view--half_vertical">
-	<div style="padding: 12px; box-sizing: border-box; height: 100%; display: block;">
+	<div class="j-layout">
 		{% if mode == "single" and note %}
-			<div style="font-size: 22px; font-weight: bold;">{{ note.title }}</div>
+			<div class="j-title">{{ note.title }}</div>
 			{% if note.updated %}
-				<div style="font-size: 13px; opacity: 0.7; margin-top: 2px;">{{ note.updated }}</div>
+				<div class="j-meta">{{ note.updated }}</div>
 			{% endif %}
-			<div class="note-body" style="margin-top: 10px; font-size: 16px; line-height: 1.35; max-height: 400px; overflow: hidden;">
-				{{ note.body_html }}
-			</div>
+			<div class="j-body">{{ note.body_html }}</div>
 		{% else %}
-			<div style="font-size: 22px; font-weight: bold;">{{ title }}</div>
-			<div style="font-size: 13px; opacity: 0.7;">{{ count }} notes</div>
-			<div style="margin-top: 10px;">
+			<div class="j-title">{{ title }}</div>
+			<div class="j-meta">{{ count }} notes</div>
+			<div class="j-list">
 				{% for item in items limit: 8 %}
-					<div style="padding: 4px 0; font-size: 16px; border-bottom: 1px solid #000;">
-						{{ item.title | truncate: 30 }}
-					</div>
+					<div class="j-list-item">{{ item.title | truncate: 30 }}</div>
 				{% endfor %}
 			</div>
 		{% endif %}
@@ -223,24 +312,43 @@ TRMNL devices can mix multiple plugins on one screen, which uses smaller layouts
 
 ```html
 <style>
-	.note-body p { margin: 0 0 4px; }
-	.note-body ul, .note-body ol { margin: 0 0 4px; padding-left: 18px; }
-	.note-body ul { list-style: none; padding-left: 4px; }
-	.note-body li { margin: 1px 0; }
+	.j-layout {
+		padding: 8px;
+		box-sizing: border-box;
+		height: 100%;
+		font-family: sans-serif;
+		font-size: 13px;
+	}
+	.j-title { font-size: 1.4em; font-weight: bold; }
+	.j-title-list { font-size: 1.4em; font-weight: bold; }
+	.j-list { margin-top: 0.3em; }
+	.j-list-item { padding: 0.15em 0; font-size: 1.1em; }
+	.j-body {
+		margin-top: 0.3em;
+		line-height: 1.3;
+		max-height: 180px;
+		overflow: hidden;
+		h1 { font-size: 1.4em; margin: 0.2em 0; }
+		h2 { font-size: 1.2em; margin: 0.2em 0; }
+		h3 { font-size: 1.05em; margin: 0.2em 0; }
+		h4, h5, h6 { font-size: 1em; margin: 0.2em 0; font-weight: bold; }
+		ul, ol { padding-left: 0; list-style: none; }
+		ul, ol { li::before { content: "• "; } }
+		ul.cb-list { li::before { content: none; } }
+		img { max-width: 100%; height: auto; }
+	}
 </style>
 
 <div class="view view--quadrant">
-	<div style="padding: 8px; box-sizing: border-box; height: 100%; display: block;">
+	<div class="j-layout">
 		{% if mode == "single" and note %}
-			<div style="font-size: 20px; font-weight: bold;">{{ note.title | truncate: 60 }}</div>
-			<div class="note-body" style="margin-top: 4px; font-size: 13px; line-height: 1.3; max-height: 180px; overflow: hidden;">
-				{{ note.body_html }}
-			</div>
+			<div class="j-title">{{ note.title | truncate: 60 }}</div>
+			<div class="j-body">{{ note.body_html }}</div>
 		{% else %}
-			<div style="font-size: 18px; font-weight: bold;">{{ title }} ({{ count }})</div>
-			<div style="margin-top: 4px;">
+			<div class="j-title-list">{{ title }} ({{ count }})</div>
+			<div class="j-list">
 				{% for item in items limit: 3 %}
-					<div style="padding: 2px 0; font-size: 15px;">• {{ item.title | truncate: 40 }}</div>
+					<div class="j-list-item">• {{ item.title | truncate: 40 }}</div>
 				{% endfor %}
 			</div>
 		{% endif %}

@@ -1,5 +1,6 @@
 import joplin from 'api';
 import { SettingItemType, MenuItemLocation } from 'api/types';
+import { renderNoteBody } from './renderNoteBody';
 
 const SETTING_SECTION = 'trmnlPlugin';
 
@@ -22,8 +23,6 @@ interface TrmnlPayload {
 	pushed_at: string;
 }
 
-const MarkupLanguageMarkdown = 1;
-
 let pushIntervalId: ReturnType<typeof setInterval> | null = null;
 
 function formatDateTime(timestamp: number): string {
@@ -44,13 +43,9 @@ async function getSettings() {
 		pushIntervalMinutes: await joplin.settings.value('pushIntervalMinutes') as number,
 		includeUpdatedTime: await joplin.settings.value('includeUpdatedTime') as boolean,
 		displayMode: await joplin.settings.value('displayMode') as DisplayMode,
+		debugMode: await joplin.settings.value('debugMode') as boolean,
 	};
 }
-
-// TRMNL caps merge_variables payloads at ~2 KB on the free plan. Reserve a
-// few hundred bytes for the JSON envelope and truncate the rendered HTML
-// body to this budget.
-const BODY_HTML_MAX_BYTES = 1800;
 
 async function fetchSearchResults(query: string, limit: number, includeBody: boolean): Promise<SearchResultItem[]> {
 	const results: SearchResultItem[] = [];
@@ -80,119 +75,20 @@ async function fetchSearchResults(query: string, limit: number, includeBody: boo
 	return results.slice(0, limit);
 }
 
-function sanitizeRenderedHtml(html: string): string {
-	if (!html) return '';
-	// TRMNL caps merge_variables payloads at ~2 KB on the free plan, so we
-	// aggressively shrink Joplin's rendered output: drop scripts/styles,
-	// remove the outer "rendered-md" wrapper, strip Joplin-specific attrs
-	// (id, class, for, data-*), unwrap anchor tags (TRMNL can't click them
-	// anyway), and convert checkbox <input> elements to plain ☐/☑ glyphs so
-	// each checkbox item costs ~5 bytes instead of ~150.
-	let cleaned = html.replace(/<script[\s\S]*?<\/script>/gi, '');
-	cleaned = cleaned.replace(/<style[\s\S]*?<\/style>/gi, '');
+let lastDebugInfo: string = '';
 
-	// Unwrap the outer <div id="rendered-md">...</div> wrapper
-	cleaned = cleaned.replace(/^\s*<div\s+id="rendered-md"[^>]*>/i, '');
-	cleaned = cleaned.replace(/<\/div>\s*$/i, '');
-
-	// Strip onclick handlers FIRST — Joplin's checkbox onclick contains JS
-	// that mentions both "checkbox-label-checked" and "-unchecked" as string
-	// literals, which would otherwise confuse our state detection below.
-	cleaned = cleaned.replace(/\sonclick="[^"]*"/gi, '');
-
-	// Convert Joplin checkboxes to Unicode box glyphs. ☐ and ☑ are designed
-	// to share the same visual width, so checked/unchecked items align
-	// without any wrapper span or fixed-width CSS.
-	cleaned = cleaned.replace(
-		/<input([^>]*)type="checkbox"([^>]*)\/?>\s*<label[^>]*>([\s\S]*?)<\/label>/gi,
-		(_match, before, after, text) => {
-			const attrs = before + after;
-			const isChecked = /\bchecked\b/i.test(attrs);
-			return `${isChecked ? '☑' : '☐'} ${text}`;
-		},
-	);
-	// Catch any stray <input type="checkbox"> not followed by a label
-	cleaned = cleaned.replace(/<input[^>]*type="checkbox"[^>]*\/?>/gi, '☐ ');
-
-	// Strip noisy attributes: id, class, for, data-*, aria-*, disabled, type
-	cleaned = cleaned.replace(/\s(?:id|class|for|data-[a-z-]+|aria-[a-z-]+|disabled|type)="[^"]*"/gi, '');
-	cleaned = cleaned.replace(/\sdisabled(?=[\s>])/gi, '');
-
-	// Unwrap <a> tags — TRMNL can't follow links
-	cleaned = cleaned.replace(/<a\b[^>]*>/gi, '');
-	cleaned = cleaned.replace(/<\/a>/gi, '');
-
-	// Drop any orphan empty <label></label>
-	cleaned = cleaned.replace(/<label[^>]*>\s*<\/label>/gi, '');
-
-	// Unwrap classless <div>/<span> wrappers left over from
-	// checkbox-wrapper and similar (now attr-less after attr stripping).
-	// Run a few times to handle nested cases.
-	for (let i = 0; i < 3; i++) {
-		cleaned = cleaned.replace(/<div>\s*<\/div>/gi, '');
-		cleaned = cleaned.replace(/<span>\s*<\/span>/gi, '');
-		// Unwrap <div> when it's the sole child of <li> — restores plain
-		// <li>text</li> structure for checkbox items.
-		cleaned = cleaned.replace(/<li>\s*<div>([\s\S]*?)<\/div>\s*<\/li>/gi, '<li>$1</li>');
-	}
-
-	// Collapse whitespace between tags and trim line breaks inside the body
-	cleaned = cleaned.replace(/>\s+</g, '><');
-	cleaned = cleaned.replace(/\n+/g, ' ');
-	cleaned = cleaned.replace(/\s{2,}/g, ' ');
-
-	return cleaned.trim();
+function renderNoteHtml(body: string): string {
+	const { html, truncated } = renderNoteBody(body);
+	lastDebugInfo = `=== INPUT MD ===\n${body}\n\n=== OUTPUT HTML ===\n${html}\n\n=== TRUNCATED: ${truncated} ===`;
+	return html;
 }
 
-function byteLength(s: string): number {
-	return new TextEncoder().encode(s).length;
-}
-
-function truncateHtmlToBytes(html: string, maxBytes: number): { html: string; truncated: boolean } {
-	if (byteLength(html) <= maxBytes) return { html, truncated: false };
-
-	// Find the last block-closing tag (</p>, </li>, </ul>, </ol>, </h1-6>,
-	// </blockquote>, </pre>) whose end position keeps the result under the
-	// budget. Truncating at a tag boundary avoids malformed HTML.
-	const boundaryRegex = /<\/(?:p|li|ul|ol|h[1-6]|blockquote|pre|div)>/gi;
-	let lastSafeEnd = -1;
-	let match: RegExpExecArray | null;
-	while ((match = boundaryRegex.exec(html)) !== null) {
-		const candidate = html.slice(0, match.index + match[0].length);
-		if (byteLength(candidate) <= maxBytes - 16) { // reserve for "…" marker
-			lastSafeEnd = match.index + match[0].length;
-		} else {
-			break;
-		}
-	}
-
-	if (lastSafeEnd < 0) {
-		// No safe boundary found — fall back to a naive char-level cut. This
-		// can produce broken HTML, but it's a last resort for pathological
-		// input (e.g. one giant <pre> block).
-		return { html: html.slice(0, maxBytes - 16) + '…', truncated: true };
-	}
-
-	return { html: html.slice(0, lastSafeEnd) + '<p>…</p>', truncated: true };
-}
-
-async function renderNoteHtml(body: string): Promise<string> {
-	if (!body) return '';
-	const result = await joplin.commands.execute('renderMarkup', MarkupLanguageMarkdown, body) as { html: string };
-	const sanitized = sanitizeRenderedHtml(result.html);
-	const { html: capped, truncated } = truncateHtmlToBytes(sanitized, BODY_HTML_MAX_BYTES);
-	if (truncated) {
-		console.warn(`[TRMNL] note body HTML was ${byteLength(sanitized)} bytes; truncated to ${BODY_HTML_MAX_BYTES} bytes to fit TRMNL's ~2 KB merge_variables limit`);
-	}
-	return capped;
-}
-
-async function transformResults(
+function transformResults(
 	results: SearchResultItem[],
 	query: string,
 	includeUpdatedTime: boolean,
 	mode: DisplayMode
-): Promise<TrmnlPayload> {
+): TrmnlPayload {
 	const items = results.map(item => {
 		const entry: { title: string; updated?: string } = { title: item.title };
 		if (includeUpdatedTime) {
@@ -219,7 +115,7 @@ async function transformResults(
 		const note: { title: string; updated?: string; body: string; body_html: string } = {
 			title: first.title,
 			body: rawBody,
-			body_html: await renderNoteHtml(rawBody),
+			body_html: renderNoteHtml(rawBody),
 		};
 		if (includeUpdatedTime) {
 			note.updated = formatDateTime(first.updated_time);
@@ -270,7 +166,7 @@ async function executePush(): Promise<{ success: boolean; message: string }> {
 		const isSingle = settings.displayMode === 'single';
 		const effectiveLimit = isSingle ? 1 : settings.resultLimit;
 		const results = await fetchSearchResults(settings.searchQuery, effectiveLimit, isSingle);
-		const payload = await transformResults(results, settings.searchQuery, settings.includeUpdatedTime, settings.displayMode);
+		const payload = transformResults(results, settings.searchQuery, settings.includeUpdatedTime, settings.displayMode);
 		const response = await pushToTrmnl(settings.webhookUrl, payload);
 
 		if (response.ok) {
@@ -279,7 +175,7 @@ async function executePush(): Promise<{ success: boolean; message: string }> {
 
 		return {
 			success: false,
-			message: formatTrmnlError(response.status, response.statusText, response.body, response.payloadBytes),
+			message: formatTrmnlError(response.status, response.statusText, response.body, response.payloadBytes) + (settings.debugMode && lastDebugInfo ? `\n\n${lastDebugInfo}` : ''),
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -403,6 +299,14 @@ joplin.plugins.register({
 				value: true,
 				label: 'Include Updated Time',
 				description: 'Include the last updated time for each note',
+			},
+			debugMode: {
+				section: SETTING_SECTION,
+				type: SettingItemType.Bool,
+				public: true,
+				value: true,
+				label: 'Debug Mode',
+				description: 'When a push fails, include the rendered HTML in the error message for troubleshooting',
 			},
 		});
 
