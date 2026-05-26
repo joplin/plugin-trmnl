@@ -163,8 +163,6 @@ The following template handles both display modes. Paste it into the **Markup** 
 		h3 { font-size: 1.05em; margin: 0.3em 0; }
 		h4, h5, h6 { font-size: 1em; margin: 0.3em 0; font-weight: bold; }
 		ul, ol { padding-left: 0; list-style: none; }
-		ul, ol { li::before { content: "• "; } }
-		ul.cb-list { li::before { content: none; } }
 		img { max-width: 100%; height: auto; }
 	}
 </style>
@@ -233,8 +231,6 @@ TRMNL devices can mix multiple plugins on one screen, which uses smaller layouts
 		h3 { font-size: 1.05em; margin: 0.25em 0; }
 		h4, h5, h6 { font-size: 1em; margin: 0.25em 0; font-weight: bold; }
 		ul, ol { padding-left: 0; list-style: none; }
-		ul, ol { li::before { content: "• "; } }
-		ul.cb-list { li::before { content: none; } }
 		img { max-width: 100%; height: auto; }
 	}
 </style>
@@ -281,8 +277,6 @@ TRMNL devices can mix multiple plugins on one screen, which uses smaller layouts
 		h3 { font-size: 1.05em; margin: 0.3em 0; }
 		h4, h5, h6 { font-size: 1em; margin: 0.3em 0; font-weight: bold; }
 		ul, ol { padding-left: 0; list-style: none; }
-		ul, ol { li::before { content: "• "; } }
-		ul.cb-list { li::before { content: none; } }
 		img { max-width: 100%; height: auto; }
 	}
 </style>
@@ -333,8 +327,6 @@ TRMNL devices can mix multiple plugins on one screen, which uses smaller layouts
 		h3 { font-size: 1.05em; margin: 0.2em 0; }
 		h4, h5, h6 { font-size: 1em; margin: 0.2em 0; font-weight: bold; }
 		ul, ol { padding-left: 0; list-style: none; }
-		ul, ol { li::before { content: "• "; } }
-		ul.cb-list { li::before { content: none; } }
 		img { max-width: 100%; height: auto; }
 	}
 </style>

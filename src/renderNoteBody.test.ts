@@ -33,27 +33,25 @@ describe('renderNoteBody', () => {
 		expect(html).toContain('☑ Done');
 	});
 
-	test('marks checkbox lists with class="cb-list"', () => {
+	test('checkbox items have glyph baked into the text', () => {
 		const { html } = renderNoteBody('- [ ] one\n- [x] two');
-		expect(html).toContain('<ul class="cb-list">');
 		expect(html).toContain('☐ one');
 		expect(html).toContain('☑ two');
 	});
 
-	test('does NOT mark regular bulleted lists', () => {
+	test('plain bullet items have • baked into the text', () => {
 		const { html } = renderNoteBody('- one\n- two');
-		expect(html).toContain('<ul>');
-		expect(html).not.toContain('cb-list');
-		expect(html).toContain('<li>one</li>');
+		expect(html).toContain('<li>• one</li>');
+		expect(html).toContain('<li>• two</li>');
 	});
 
-	test('mixed checkbox + plain bullet lists each get the right class', () => {
+	test('mixed checkbox + plain bullet lists each get the right glyph', () => {
 		const md = '## Tasks\n\n- [ ] task one\n- [x] task two\n\n## Items\n\n- item A\n- item B';
 		const { html } = renderNoteBody(md);
-		// Tasks list has the marker
-		expect(html).toMatch(/<ul class="cb-list">\s*<li>☐ task one<\/li>/);
-		// Items list does not
-		expect(html).toMatch(/<ul>\s*<li>item A<\/li>/);
+		expect(html).toContain('<li>☐ task one</li>');
+		expect(html).toContain('<li>☑ task two</li>');
+		expect(html).toContain('<li>• item A</li>');
+		expect(html).toContain('<li>• item B</li>');
 	});
 
 	test('renders the full sample note from the bug report', () => {
@@ -74,10 +72,7 @@ describe('renderNoteBody', () => {
 		expect(html).toContain('<h2>Meals</h2>');
 		expect(html).toContain('☑ Book dentist appointment');
 		expect(html).toContain('☐ Morning workout');
-		expect(html).toContain('<ul class="cb-list">');
-		expect(html).toContain('<li>Lunch: Chicken salad</li>');
-		// The meals list should NOT have the checkbox class
-		expect(html).toMatch(/<ul>\s*<li>Lunch/);
+		expect(html).toContain('<li>• Lunch: Chicken salad</li>');
 		expect(truncated).toBe(false);
 	});
 

@@ -41,40 +41,43 @@ md.renderer.rules.fence = (tokens, idx) => {
 	return `<pre><code>${content}</code></pre>`;
 };
 
-// Transform GFM-style task list items inline-tokens. Each list item starts
-// with a paragraph_open whose first inline token contains text like "[ ]" or
-// "[x]". We rewrite that into a "☐" / "☑" prefix and tag the parent <ul>
-// with class="cb-list" so the template CSS can hide bullet points.
-md.core.ruler.after('inline', 'task_lists', (state) => {
+// Prefix list items with the appropriate marker glyph at the markdown level
+// (rather than relying on CSS pseudo-elements which TRMNL's renderer handles
+// inconsistently). Bulleted items get "• ", GFM task items get "☐ " / "☑ ".
+md.core.ruler.after('inline', 'list_markers', (state) => {
 	const tokens = state.tokens;
-	const checkboxLists = new Set<number>();
 
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i];
 		if (token.type !== 'inline') continue;
 		if (!token.children || !token.children.length) continue;
 
+		// Only operate on inline tokens that are the first child of a list item.
+		// The token directly before an inline is paragraph_open; before that
+		// should be list_item_open for us to act.
+		if (i < 2) continue;
+		if (tokens[i - 1].type !== 'paragraph_open') continue;
+		if (tokens[i - 2].type !== 'list_item_open') continue;
+
+		// Skip ordered lists — they keep their numbers (we don't strip those).
+		// We need to find the enclosing list to know if it's bulleted.
+		let listType: 'bullet' | 'ordered' | null = null;
+		for (let j = i - 2; j >= 0; j--) {
+			if (tokens[j].type === 'bullet_list_open') { listType = 'bullet'; break; }
+			if (tokens[j].type === 'ordered_list_open') { listType = 'ordered'; break; }
+		}
+		if (listType !== 'bullet') continue;
+
 		const first = token.children[0];
 		if (first.type !== 'text') continue;
-		const match = first.content.match(/^\[([ xX])\]\s?(.*)$/);
-		if (!match) continue;
 
-		const checked = match[1].toLowerCase() === 'x';
-		first.content = `${checked ? '☑' : '☐'} ${match[2]}`;
-
-		// Find the enclosing <ul> by scanning backwards for the nearest
-		// bullet_list_open and mark it for class injection.
-		for (let j = i - 1; j >= 0; j--) {
-			if (tokens[j].type === 'bullet_list_open') {
-				checkboxLists.add(j);
-				break;
-			}
-			if (tokens[j].type === 'bullet_list_close') break;
+		const checkMatch = first.content.match(/^\[([ xX])\]\s?(.*)$/);
+		if (checkMatch) {
+			const checked = checkMatch[1].toLowerCase() === 'x';
+			first.content = `${checked ? '☑' : '☐'} ${checkMatch[2]}`;
+		} else {
+			first.content = `• ${first.content}`;
 		}
-	}
-
-	for (const idx of checkboxLists) {
-		tokens[idx].attrSet('class', 'cb-list');
 	}
 });
 
